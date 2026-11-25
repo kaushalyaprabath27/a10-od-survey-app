@@ -395,7 +395,17 @@ const btnStart = $('btn-start');
 $('btn-next').addEventListener('click', () => showScreen('setup'));
 
 function buildSetupLists() {
-    $('location-list').innerHTML = (CONFIG.surveyLocations || []).map(l => `<option value="${escapeHtml(l)}"></option>`).join('');
+    // Stations: picked from the list only (one tap), so every name is written the same way.
+    const locBox = $('loc-chips');
+    locBox.innerHTML = '';
+    (CONFIG.surveyLocations || []).forEach(l => {
+        const b = el('button', 'chip-opt', `<span>${escapeHtml(l)}</span>`);
+        b.type = 'button';
+        b.dataset.value = l;
+        b.setAttribute('role', 'radio');
+        b.addEventListener('click', () => { inputLocation.value = l; checkSetupForm(); });
+        locBox.appendChild(b);
+    });
     const box = $('dir-chips');
     box.innerHTML = '';
     (CONFIG.directions || []).forEach(d => {
@@ -410,6 +420,11 @@ function buildSetupLists() {
 
 function checkSetupForm() {
     const dir = inputDirection.value.trim();
+    $('loc-chips').querySelectorAll('.chip-opt').forEach(b => {
+        const on = b.dataset.value === normStation(inputLocation.value);
+        b.classList.toggle('selected', on);
+        b.setAttribute('aria-checked', String(on));
+    });
     $('dir-chips').querySelectorAll('.chip-opt').forEach(b => {
         const on = b.dataset.value === dir;
         b.classList.toggle('selected', on);

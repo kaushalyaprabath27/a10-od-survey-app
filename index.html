@@ -41,9 +41,9 @@
                     <input type="text" id="surveyor-name" placeholder="Enter your name" autocomplete="off">
                 </div>
                 <div class="form-group">
-                    <label for="survey-location"><i class="fa-solid fa-location-dot"></i> Survey location (station)</label>
-                    <input type="text" id="survey-location" placeholder="Pick or type the station" autocomplete="off" list="location-list">
-                    <datalist id="location-list"></datalist>
+                    <label id="lbl-survey-location"><i class="fa-solid fa-location-dot"></i> Survey location (station)</label>
+                    <div id="loc-chips" class="chips setup-chips loc-chips" role="radiogroup" aria-labelledby="lbl-survey-location"></div>
+                    <input type="hidden" id="survey-location">
                 </div>
                 <div class="form-group">
                     <label for="survey-direction"><i class="fa-solid fa-arrow-right-arrow-left"></i> Direction of travel surveyed</label>

@@ -648,6 +648,8 @@ body.route-full-open .theme-btn, body.route-full-open .topbar, body.route-full-o
 .chip-btn b { overflow: hidden; text-overflow: ellipsis; }
 .setup-chips { margin-bottom: 8px; }
 .setup-chips .chip-opt, .modal-chips .chip-opt { flex: 1 1 100%; justify-content: flex-start; }
+.loc-chips { display: grid; grid-template-columns: repeat(4, 1fr); }
+.setup-chips.loc-chips .chip-opt { justify-content: center; padding-left: 4px; padding-right: 4px; white-space: nowrap; font-weight: 700; }
 .modal-chips { margin: 4px 0 6px; }
 .place-status.warn { color: var(--warn); }
 .amount { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
