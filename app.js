@@ -863,13 +863,18 @@ function buildPlaceField(q, f) {
     const showRows = (rows, info) => {
         const typed = typedItem();
         const typedKey = typed.length ? typed[0].label.toLowerCase() : null;
-        // One row per name; a map match with coordinates replaces a list entry without.
+        // One row per name (same-name places in different districts each get a row);
+        // a map match with coordinates replaces a list entry without.
         const rest = [], at = {};
+        const seenName = {};
         rows.forEach(r => {
-            const k = r.label.toLowerCase();
-            if (k === typedKey && r.lat == null) return;
+            const name = r.label.toLowerCase();
+            if (name === typedKey && r.lat == null) return;
+            // A map place takes the place of the town list / recent entry of the same name.
+            const k = r.key && seenName[name] !== undefined && rest[seenName[name]].lat == null ? name : (r.key || r.label).toLowerCase();
+            if (seenName[name] === undefined) seenName[name] = rest.length;
             if (!(k in at)) { at[k] = rest.length; rest.push(r); }
-            else if (rest[at[k]].lat == null && r.lat != null) rest[at[k]] = Object.assign({}, r, { sub: rest[at[k]].sub || r.sub });
+            else if (rest[at[k]].lat == null && r.lat != null) rest[at[k]] = Object.assign({}, r, { sub: r.sub || rest[at[k]].sub });
         });
         const attrib = rest.some(r => r.source === 'osm' || r.source === 'google') && !info
             ? (CONFIG.googlePlacesApiKey ? 'Powered by Google' : 'Suggestions © OpenStreetMap contributors') : null;
@@ -1409,10 +1414,13 @@ async function citySuggestions(text, signal) {
     }).filter(r => r.main);
 }
 
-// Free: Photon (komoot) over OpenStreetMap data. No key needed. Villages
-// and towns anywhere in Sri Lanka, gently biased towards the survey site.
+// Free: Photon (komoot) over OpenStreetMap data. No key needed. Only places
+// (cities, towns, villages, hamlets...), not shops or offices, anywhere in Sri
+// Lanka, gently biased towards the survey site. Only the name is saved; the
+// kind of place and its district are shown under it to tell same names apart.
+const PLACE_KINDS = { city: 'City', town: 'Town', village: 'Village', hamlet: 'Hamlet', suburb: 'Suburb', neighbourhood: 'Area', quarter: 'Area', locality: 'Locality', isolated_dwelling: 'Hamlet' };
 async function photonSuggestions(text, signal) {
-    const p = new URLSearchParams({ q: text, limit: '6', lang: 'en' });
+    const p = new URLSearchParams({ q: text, limit: '8', lang: 'en', osm_tag: 'place' });
     const box = CONFIG.placeSearchBbox;
     if (Array.isArray(box) && box.length === 4) p.set('bbox', box.join(','));
     const here = sessionLatLon();
@@ -1427,14 +1435,11 @@ async function photonSuggestions(text, signal) {
     const data = await res.json();
     return (data.features || []).map(ft => {
         const pr = ft.properties || {};
-        const main = pr.name || [pr.housenumber, pr.street].filter(Boolean).join(' ') || pr.city || pr.county || '';
-        const parts = [];
-        [pr.name ? pr.street : null, pr.district, pr.city, pr.county, pr.state].forEach(x => {
-            if (x && x !== main && !parts.includes(x)) parts.push(x);
-        });
-        const sub = parts.join(', ');
+        const main = pr.name || '';
+        const area = pr.county || pr.state || '';
+        const sub = [PLACE_KINDS[pr.osm_value] || 'Place', area].filter(Boolean).join(' · ');
         const [lon, lat] = (ft.geometry && ft.geometry.coordinates) || [null, null];
-        return { main, sub, label: sub ? `${main}, ${sub}` : main, lat, lon, source: 'osm', city: pr.osm_key === 'place' && (pr.osm_value === 'city' || pr.osm_value === 'town') };
+        return { main, sub, label: main, key: `${main}|${area}`, lat, lon, source: 'osm', city: pr.osm_value === 'city' || pr.osm_value === 'town' };
     }).filter(r => r.main);
 }
 
@@ -1457,7 +1462,7 @@ async function googleSuggestions(text, signal) {
         const pp = s.placePrediction;
         const main = (pp.structuredFormat && pp.structuredFormat.mainText && pp.structuredFormat.mainText.text) || (pp.text && pp.text.text) || '';
         const sub = (pp.structuredFormat && pp.structuredFormat.secondaryText && pp.structuredFormat.secondaryText.text) || '';
-        return { main, sub, label: (pp.text && pp.text.text) || main, lat: null, lon: null, source: 'google', placeId: pp.placeId };
+        return { main, sub, label: main, key: `${main}|${sub}`, lat: null, lon: null, source: 'google', placeId: pp.placeId };
     });
 }
 
