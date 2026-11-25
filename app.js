@@ -235,12 +235,12 @@ const FORM = [
         hint: 'Amount and unit, e.g. 2.5 tonnes or 40 bags', placeholder: 'e.g. 2.5'
     },
     {
-        id: 'vehiclePhoto', section: 'Vehicle number', label: 'Photo of the vehicle (number plate)', type: 'photo', optional: true,
-        hint: 'Tap the camera picture to take the photo. With a photo the number need not be typed.'
+        id: 'vehiclePhoto', section: 'Vehicle photo and number', label: 'Photo of the vehicle', type: 'photo', optional: true,
+        hint: 'The whole vehicle in the picture (front or side). Tap the camera picture to take the photo.'
     },
     {
         id: 'vehicleNo', label: 'Vehicle number (number plate)', type: 'plate',
-        hint: 'Type it if there is no photo: letters (ABC), Sri or the old number (200), then the number (1234)'
+        hint: 'Letters (ABC), Sri or the old number (200), then the number (1234)'
     }
 ];
 
@@ -641,8 +641,7 @@ function isAnswered(f) {
         return !!v.unit && (v.unit !== 'Other' || !!(v.unitOther || '').trim());
     }
     if (f.type === 'photo') return !!v;
-    // A photo of the vehicle answers the vehicle number too.
-    if (f.type === 'plate') return !!(answers.vehiclePhoto || (v && (v.unknown || ((v.prefix || '').trim() && /^\d{1,4}$/.test(v.number || '')))));
+    if (f.type === 'plate') return !!(v && (v.unknown || ((v.prefix || '').trim() && /^\d{1,4}$/.test(v.number || ''))));
     if (f.type === 'multi') return Array.isArray(v) && v.length > 0;
     if (!(v && String(v).trim())) return false;
     // "Other" needs its text, and e.g. '6+' needs the exact number.
@@ -1311,8 +1310,7 @@ function buildPlateField(q, f) {
     const set = patch => { answers[f.id] = Object.assign({ prefix: '', number: '' }, answers[f.id] || {}, patch, { unknown: false }); changed(); setStatus(); };
     const setStatus = () => {
         const v = answers[f.id] || {};
-        if (answers.vehiclePhoto && !(v.unknown || v.prefix || v.number)) { status.textContent = '✓ Photo taken: typing not needed'; status.className = 'place-status ok'; }
-        else if (v.unknown) { status.textContent = '✓ ' + PLATE_NOT_NOTED; status.className = 'place-status ok'; }
+        if (v.unknown) { status.textContent = '✓ ' + PLATE_NOT_NOTED; status.className = 'place-status ok'; }
         else if (isAnswered(f)) { status.textContent = `✓ ${v.prefix.trim()} – ${v.number}`; status.className = 'place-status ok'; }
         else if (v.prefix || v.number) { status.textContent = v.number ? 'Type the first part (ABC, SRI or 200)' : 'Type the number'; status.className = 'place-status warn'; }
         else { status.textContent = ''; status.className = 'place-status'; }
