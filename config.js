@@ -3,7 +3,7 @@
 window.A10_CONFIG = {
     // Google Apps Script Web App URL (Deploy > Manage deployments, ends in /exec).
     // Until this is set, interviews are kept safely on the device and are NOT sent.
-    appsScriptUrl: 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE',
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwJ9bP5Y6kuLnz88PMCoxi8kqrGuZ86ZbdE3UNGvzOUv5x8kO1Cu_49tpfcJJ6JdAM/exec',
 
     projectName: 'A10 Katugastota – Galagedara widening (feasibility study)',
 
