@@ -24,12 +24,13 @@ One form per vehicle stopped.
 | 1 | Vehicle category | Vehicle category |
 | 2 | Vehicle type: Motorcycle, 3-wheeler, Taxi, Car / Jeep, Passenger van, Office van, School van, Minibus, Large bus | Vehicle type: Delivery van, Light truck (2 axles / 4 wheels), Medium truck (2 axles / 6 wheels), Large truck (2 axles / 6 wheels), Heavy vehicle (3 axles / 10 wheels), Container with trailer, Other (type it) |
 | 3 | Occupancy 1–5, or 6+ then the exact number | same |
-| 4 / 4a | Origin village / town + district | same |
+| 4 / 4a–c | Origin: district, then its DS Division, then its GN Division (lists from `areas.js`), then the village / town (suggestions: GN Divisions of that DSD and map places in that district only) | same |
 | 5 | Type of origin: Home, Work, School / Education, Business, Health, Shopping / Social, Tourism / Leisure, Other | – |
-| | Destination village / town + district, type of destination | destination + district |
+| | Destination: district → DS Division → GN Division → village / town, type of destination | destination the same way |
 | | Trip frequency: Daily, Several days a week, About once a week, Once in 2 weeks, Monthly, Less frequently, First time, Other (type) | same |
 | | Trip purpose | Commodity: Empty, Vegetables / Fruits, Essential food items, Building materials, Industrial products, Other — with the goods typed in (e.g. potatoes); load: Empty, 1/4, 1/2, 3/4, Full, Overloaded |
-| | In future, would you use the Central Expressway on this route? Yes / No / Not sure | same |
+| | **Expressway, this trip:** used an expressway? If yes: which expressway(s), entry and exit interchange (suggested from the expressways ticked; another name can be typed; Not known) | same |
+| | **Expressway, future:** would you use an expressway for this trip? Yes / No / Not sure. If yes: which, entry and exit interchange (under-construction interchanges such as Galagedara included and marked) | same |
 | last | **Value of time:** is the respondent the vehicle owner? If yes, monthly household income (8 bands from < Rs. 30,000 to > Rs. 500,000, or prefer not to say) | **Value of time:** approximate value of the goods carried (Rs.) and approximate load with its unit (tonnes, kg, bags, units, litres, cubes, other), each with Not known; not asked for empty vehicles |
 | last | **Vehicle number** in two parts: letters (ABC), SRI or the old number (200, 19 SRI), then the number (1234); or Not noted | same |
 
@@ -60,7 +61,7 @@ An "Other" answer counts only once its text is typed.
    app, *Execute as: Me*, *Who has access: Anyone*). Copy the `/exec` URL.
 2. Put that URL in `config.js` → `appsScriptUrl` (the admin dashboard reads it from there too). Until then the app keeps everything on
    the phone and shows "Not linked to sheet".
-3. Edit `config.js` for the station names (keep `STATIONS` in the backend in step), the
+3. Edit `config.js` for the expressways and their interchanges (`expressways`), the station names (keep `STATIONS` in the backend in step), the
    directions (Towards Kandy / Towards Kurunegala), the towns offered first, and the
    per-enumerator targets (`enumeratorTargets`) from the sampling plan.
 4. Every time app files change, bump `CACHE_NAME` in `sw.js` so phones pick up the update.
@@ -77,6 +78,6 @@ An "Other" answer counts only once its text is typed.
 
 ## Files
 
-`index.html`, `style.css`, `app.js`, `admin.html` / `admin.js` / `admin.css` (questionnaire in the `FORM` list), `config.js`,
+`index.html`, `style.css`, `app.js`, `areas.js` (District → DSD → GND lists, from github.com/nuuuwan/gig-data; 25 / 331 / 14,005), `admin.html` / `admin.js` / `admin.css` (questionnaire in the `FORM` list), `config.js`,
 `sw.js`, `manifest.json`, `icons/`,
 `backend/a10_od_apps_script.js`.

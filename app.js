@@ -28,7 +28,7 @@ const PLACEHOLDER_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';
 const SURVEY_TYPE = 'a10-roadside-od';
 // v4: vehicle number (two parts). v3: commodity groups + details, load amount + unit. v2: district only (no DSD),
 // no parking / ownership; trip purpose, 6+ count, owner income, commodity value.
-const SYNC_ACTION = 'submit_a10od_v4';
+const SYNC_ACTION = 'submit_a10od_v5'; // v5: origin / destination DSD + GND, expressway used / future use with interchanges
 const BATCH_SIZE = 50;
 const SYNC_INTERVAL_MS = 15000;
 
@@ -49,6 +49,11 @@ const THEME_KEY = 'a10od_theme';
 //            recent: true also offers places used before on this phone
 //            cities: true = Sri Lankan cities and towns first
 //   district - district picked from the list (or 'Not known')
+//   pick   - picked from a list that depends on earlier answers (or 'Not known'):
+//            area: 'dsd' / 'gnd' = DS / GN Division of the district / DSD picked
+//            above (of: 'origin' / 'destination'); area: 'interchange' = the
+//            interchanges of the expressways ticked in the question named by
+//            'from' (another name can be typed)
 //   plate  - vehicle number in two parts: letters / Sri / old number, then the number
 //   amount - a number (rupees by default), or 'Not known'
 //            decimals: true allows 2.5;  units: [...] asks for the unit too
@@ -87,6 +92,15 @@ const DISTRICTS = [
     'Polonnaruwa', 'Puttalam', 'Ratnapura', 'Trincomalee', 'Vavuniya'
 ];
 
+// District -> DS Division -> GN Division lists (areas.js).
+const AREAS = window.SL_AREAS || {};
+const knownDistrict = v => !!(v && v.district && v.district !== NOT_KNOWN && AREAS[v.district]);
+const pickKnown = v => !!(v && v.value && v.value !== NOT_KNOWN);
+const pickOf = (a, id) => (a[id] && a[id].value) || '';
+const EXPRESSWAYS = Array.isArray(CONFIG.expressways) ? CONFIG.expressways : [];
+const EXPRESSWAY_OPTIONS = EXPRESSWAYS.map(e => [e.name, 'fa-road']);
+const YES_NO = [['Yes', 'fa-circle-check'], ['No', 'fa-circle-xmark']];
+
 const FORM = [
     // ---------------- Vehicle ----------------
     {
@@ -124,19 +138,23 @@ const FORM = [
     },
 
     // ---------------- Origin ----------------
+    { id: 'originDistrict', section: 'Origin', label: 'Where did this trip start? District', type: 'district' },
+    { id: 'originDsd', label: 'DS Division of the origin', type: 'pick', area: 'dsd', of: 'origin', sub: true, showIf: a => knownDistrict(a.originDistrict) },
+    { id: 'originGnd', label: 'GN Division of the origin', type: 'pick', area: 'gnd', of: 'origin', sub: true, showIf: a => knownDistrict(a.originDistrict) && pickKnown(a.originDsd) },
     {
-        id: 'origin', section: 'Origin', label: 'Where did this trip start?', type: 'place', presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
-        hint: 'Village / town / location', placeholder: 'Type a village, town or place'
+        id: 'origin', label: 'Village / town of the origin', type: 'place', of: 'origin', sub: true, presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
+        hint: 'Suggestions from the district picked', placeholder: 'Type a village, town or place'
     },
-    { id: 'originDistrict', label: 'District of the origin', type: 'district', sub: true },
     { id: 'originType', label: 'Type of origin', type: 'single', grid: true, other: true, showIf: isPax, options: TRIP_ENDS },
 
     // ---------------- Destination ----------------
+    { id: 'destinationDistrict', section: 'Destination', label: 'Where will this trip end? District', type: 'district' },
+    { id: 'destinationDsd', label: 'DS Division of the destination', type: 'pick', area: 'dsd', of: 'destination', sub: true, showIf: a => knownDistrict(a.destinationDistrict) },
+    { id: 'destinationGnd', label: 'GN Division of the destination', type: 'pick', area: 'gnd', of: 'destination', sub: true, showIf: a => knownDistrict(a.destinationDistrict) && pickKnown(a.destinationDsd) },
     {
-        id: 'destination', section: 'Destination', label: 'Where will this trip end?', type: 'place', presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
-        hint: 'Village / town / location', placeholder: 'Type a village, town or place'
+        id: 'destination', label: 'Village / town of the destination', type: 'place', of: 'destination', sub: true, presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
+        hint: 'Suggestions from the district picked', placeholder: 'Type a village, town or place'
     },
-    { id: 'destinationDistrict', label: 'District of the destination', type: 'district', sub: true },
     { id: 'destinationType', label: 'Type of destination', type: 'single', grid: true, other: true, showIf: isPax, options: TRIP_ENDS },
 
     // ---------------- Trip details ----------------
@@ -178,10 +196,19 @@ const FORM = [
             ['Accompanying / assisting someone', 'fa-people-arrows']
         ]
     },
+
+    // ---------------- Expressway: this trip, then future use ----------------
+    { id: 'usedExpressway', section: 'Expressway', label: 'Did you use an expressway on this trip?', type: 'single', yesno: true, options: YES_NO },
+    { id: 'usedExpressways', label: 'Which expressway(s)?', type: 'multi', grid: true, sub: true, options: EXPRESSWAY_OPTIONS, showIf: a => a.usedExpressway === 'Yes' },
+    { id: 'usedEntry', label: 'Entry interchange (got on)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => a.usedExpressway === 'Yes' },
+    { id: 'usedExit', label: 'Exit interchange (got off)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => a.usedExpressway === 'Yes' },
     {
-        id: 'expressway', label: 'In future, would you use the Central Expressway on this route?', type: 'single', yesno: true,
-        hint: 'Future use of the expressway', options: [['Yes', 'fa-circle-check'], ['No', 'fa-circle-xmark'], ['Not sure', 'fa-circle-question']]
+        id: 'futureExpressway', label: 'In future, would you use an expressway for this trip?', type: 'single', yesno: true,
+        hint: 'e.g. when the Central Expressway reaches Galagedara', options: YES_NO.concat([['Not sure', 'fa-circle-question']])
     },
+    { id: 'futureExpressways', label: 'Which expressway(s)?', type: 'multi', grid: true, sub: true, options: EXPRESSWAY_OPTIONS, showIf: a => a.futureExpressway === 'Yes' },
+    { id: 'futureEntry', label: 'Entry interchange (would get on)', type: 'pick', area: 'interchange', from: 'futureExpressways', sub: true, showIf: a => a.futureExpressway === 'Yes' },
+    { id: 'futureExit', label: 'Exit interchange (would get off)', type: 'pick', area: 'interchange', from: 'futureExpressways', sub: true, showIf: a => a.futureExpressway === 'Yes' },
 
     // ---------------- Value of Time (VOT) ----------------
     {
@@ -577,6 +604,7 @@ function buildForm() {
         q.appendChild(label);
         if (f.type === 'place') buildPlaceField(q, f);
         else if (f.type === 'district') buildDistrictField(q, f);
+        else if (f.type === 'pick') buildPickField(q, f);
         else if (f.type === 'amount') buildAmountField(q, f);
         else if (f.type === 'plate') buildPlateField(q, f);
         else if (f.type === 'photo') buildPhotoField(q, f);
@@ -589,6 +617,7 @@ function isAnswered(f) {
     const v = answers[f.id];
     if (f.type === 'place') return !!(v && v.text && v.text.trim());
     if (f.type === 'district') return !!(v && v.district);
+    if (f.type === 'pick') return !!(v && v.value);
     if (f.type === 'amount') {
         if (!v) return false;
         if (v.unknown) return true;
@@ -642,6 +671,14 @@ function renderAllFromAnswers() {
 }
 
 function changed() {
+    // A DS / GN Division picked for another district or DSD no longer applies.
+    FORM.forEach(f => {
+        const v = answers[f.id];
+        if (f.type === 'pick' && pickParent(f) !== null && v && (v.value || v.text) && v.parent !== pickParent(f)) {
+            answers[f.id] = null;
+            if (renderers[f.id]) renderers[f.id]();
+        }
+    });
     saveDraft();
     refreshProgress();
 }
@@ -843,6 +880,31 @@ function presetFor(f, text) {
         .map(name => ({ main: name, sub: CONFIG.presetSub || 'Nearby town', label: name, lat: null, lon: null, source: 'list', iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
 }
 
+// The district / DSD / GND picked above a village question (of: 'origin' / 'destination').
+function areaOf(f) {
+    if (!f.of) return {};
+    const d = answers[f.of + 'District'];
+    return {
+        district: knownDistrict(d) ? d.district : '',
+        dsd: pickKnown(answers[f.of + 'Dsd']) ? answers[f.of + 'Dsd'].value : '',
+        gnd: pickKnown(answers[f.of + 'Gnd']) ? answers[f.of + 'Gnd'].value : ''
+    };
+}
+// GN Division names of the DSD picked (the GND picked first): villages are often named like them.
+function gndFor(f, text) {
+    const a = areaOf(f);
+    if (!a.district || !a.dsd) return [];
+    const t = text.toLowerCase();
+    const names = ((AREAS[a.district] || {})[a.dsd] || []).filter(n => !t || n.toLowerCase().includes(t));
+    names.sort((x, y) => (y === a.gnd) - (x === a.gnd) || (x.toLowerCase().startsWith(t) ? 0 : 1) - (y.toLowerCase().startsWith(t) ? 0 : 1) || x.localeCompare(y));
+    return names.slice(0, 8).map(n => ({ main: n, sub: `GN Division · ${a.dsd}`, label: n, lat: null, lon: null, source: 'gnd', iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
+}
+// Map suggestions outside the district picked are left out.
+function inDistrict(f, r) {
+    const d = areaOf(f).district;
+    return !d || !r.area || r.area.replace(/\s+District$/i, '').toLowerCase() === d.toLowerCase();
+}
+
 function buildPlaceField(q, f) {
     const ta = typeahead(q, f, 'fa-location-dot');
     const { input, clear, status } = ta;
@@ -851,7 +913,7 @@ function buildPlaceField(q, f) {
     const setStatus = () => {
         const v = answers[f.id];
         if (v && v.lat != null) { status.textContent = '✓ Place selected from map suggestions'; status.className = 'place-status ok'; }
-        else if (v && v.text && v.confirmed) { status.textContent = v.source === 'list' ? `✓ ${CONFIG.presetSub || 'Nearby town'}` : '✓ Saved as typed'; status.className = 'place-status ok'; }
+        else if (v && v.text && v.confirmed) { status.textContent = v.source === 'list' ? `✓ ${CONFIG.presetSub || 'Nearby town'}` : v.source === 'gnd' ? '✓ GN Division name' : '✓ Saved as typed'; status.className = 'place-status ok'; }
         else if (v && v.text) { status.textContent = 'Typed text will be saved as written'; status.className = 'place-status'; }
         else { status.textContent = ''; status.className = 'place-status'; }
     };
@@ -903,9 +965,11 @@ function buildPlaceField(q, f) {
     };
     ta.onEnter = () => { if (input.value.trim()) { ta.items = typedItem(); ta.onChoose(0); } else ta.hide(); };
 
+    // With a district picked: its GN Divisions instead of the corridor town list.
+    const localRows = t => recentFor(f, t).concat(areaOf(f).district ? gndFor(f, t) : presetFor(f, t));
     const search = async text => {
         const qText = text.trim();
-        const local = recentFor(f, qText).concat(presetFor(f, qText));
+        const local = localRows(qText);
         if (!qText) { local.length ? showRows(local) : ta.hide(); return; }
         if (qText.length < 2) { showRows(local); return; }
         if (!navigator.onLine) { showRows(local, 'Offline: no map suggestions.'); return; }
@@ -918,7 +982,7 @@ function buildPlaceField(q, f) {
                 placeSuggestions(qText, controller.signal)
             ]);
             const cityNames = new Set(cities.map(c => c.main.toLowerCase()));
-            const found = cities.concat(places.filter(p => !(p.city && cityNames.has(p.main.toLowerCase()))));
+            const found = cities.concat(places.filter(p => !(p.city && cityNames.has(p.main.toLowerCase())))).filter(r => inDistrict(f, r));
             showRows(local.concat(found), found.length || local.length ? null : 'No map matches.');
         } catch (e) {
             if (e.name === 'AbortError') return;
@@ -934,7 +998,7 @@ function buildPlaceField(q, f) {
         clearTimeout(timer);
         // Refresh straight away so no stale suggestion from the previous text can be picked.
         const t = input.value.trim();
-        if (t) showRows(recentFor(f, t).concat(presetFor(f, t)), t.length >= 2 ? 'Searching…' : null); else search('');
+        if (t) showRows(localRows(t), t.length >= 2 ? 'Searching…' : null); else search('');
         timer = setTimeout(() => search(input.value), 350);
     });
     input.addEventListener('focus', () => {
@@ -1008,6 +1072,95 @@ function buildDistrictField(q, f) {
     renderers[f.id] = () => {
         const v = answers[f.id];
         input.value = !v ? '' : (v.district || v.text || '');
+        clear.classList.toggle('hidden', !input.value);
+        setStatus();
+    };
+}
+
+// ----- Pick fields: DS / GN Division, expressway interchange -----
+// The earlier answer a pick depends on ('' = none yet); null = it depends on nothing.
+function pickParent(f) {
+    if (f.area === 'dsd') { const d = answers[f.of + 'District']; return knownDistrict(d) ? d.district : ''; }
+    if (f.area === 'gnd') { const d = answers[f.of + 'District']; return (knownDistrict(d) ? d.district : '') + '|' + pickOf(answers, f.of + 'Dsd'); }
+    return null;
+}
+function pickRows(f, text) {
+    const t = text.trim().toLowerCase();
+    const rank = n => n.toLowerCase().startsWith(t) ? 0 : 1;
+    let rows = [];
+    if (f.area === 'dsd' || f.area === 'gnd') {
+        const d = (answers[f.of + 'District'] || {}).district;
+        const names = f.area === 'dsd' ? Object.keys(AREAS[d] || {}) : ((AREAS[d] || {})[pickOf(answers, f.of + 'Dsd')] || []);
+        rows = names.filter(n => !t || n.toLowerCase().includes(t))
+            .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y))
+            .map(n => ({ main: n, value: n }));
+    } else if (f.area === 'interchange') {
+        const picked = answers[f.from];
+        const list = EXPRESSWAYS.filter(e => !Array.isArray(picked) || !picked.length || picked.includes(e.name));
+        const byName = new Map();
+        list.forEach(e => {
+            const short = (/\((E\d+)\)/.exec(e.name) || [])[1] || e.name;
+            [[e.open || [], ''], [e.building || [], ' (under construction)']].forEach(([names, note]) => names.forEach(n => {
+                const k = n.toLowerCase();
+                if (!byName.has(k)) byName.set(k, { main: n, value: n, ways: [] });
+                byName.get(k).ways.push(short + note);
+            }));
+        });
+        rows = [...byName.values()].filter(r => !t || r.main.toLowerCase().includes(t))
+            .sort((x, y) => rank(x.main) - rank(y.main))
+            .map(r => Object.assign(r, { sub: r.ways.join(' · ') }));
+        const typed = text.trim();
+        if (typed && !rows.some(r => r.main.toLowerCase() === t)) {
+            rows.unshift({ main: typed, value: typed, sub: 'Use as typed', cls: 's-typed', iconHtml: '<i class="fa-solid fa-keyboard"></i> ' });
+        }
+    }
+    rows.push({ main: NOT_KNOWN, value: NOT_KNOWN, sub: 'Respondent does not know', cls: 's-typed', iconHtml: '<i class="fa-solid fa-circle-question"></i> ' });
+    return rows;
+}
+function buildPickField(q, f) {
+    f.placeholder = f.placeholder || (f.area === 'interchange' ? 'Type or pick the interchange' : f.area === 'dsd' ? 'Type or pick the DS Division' : 'Type or pick the GN Division');
+    const ta = typeahead(q, f, f.area === 'interchange' ? 'fa-road' : 'fa-map-location-dot');
+    const { input, clear, status } = ta;
+    const setStatus = () => {
+        const v = answers[f.id];
+        if (v && v.value) { status.textContent = v.value === NOT_KNOWN ? '✓ Not known' : '✓ ' + v.value; status.className = 'place-status ok'; }
+        else if (v && v.text) { status.textContent = f.area === 'interchange' ? 'Pick from the list or "Use as typed"' : 'Pick a name from the list'; status.className = 'place-status warn'; }
+        else { status.textContent = ''; status.className = 'place-status'; }
+    };
+    const show = () => {
+        const rows = pickRows(f, input.value);
+        ta.show(rows, rows.length === 1 ? 'No name matches - check the spelling.' : null);
+    };
+    ta.onChoose = i => {
+        const r = ta.items[i];
+        if (!r) return;
+        answers[f.id] = { value: r.value, text: r.value, parent: pickParent(f) };
+        input.value = r.value;
+        ta.hide();
+        clear.classList.remove('hidden');
+        changed();
+        setStatus();
+    };
+    ta.onEnter = () => { if (ta.items.length > 1) ta.onChoose(0); };   // the best match
+    input.addEventListener('input', () => {
+        answers[f.id] = { value: '', text: input.value, parent: pickParent(f) };
+        changed();
+        setStatus();
+        clear.classList.toggle('hidden', !input.value);
+        show();
+    });
+    input.addEventListener('focus', () => { const v = answers[f.id]; if (!(v && v.value)) show(); });
+    clear.addEventListener('click', () => {
+        input.value = '';
+        answers[f.id] = null;
+        clear.classList.add('hidden');
+        changed();
+        setStatus();
+        input.focus();
+    });
+    renderers[f.id] = () => {
+        const v = answers[f.id];
+        input.value = !v ? '' : (v.value || v.text || '');
         clear.classList.toggle('hidden', !input.value);
         setStatus();
     };
@@ -1410,7 +1563,7 @@ async function citySuggestions(text, signal) {
         const pr = ft.properties || {};
         const [lon, lat] = (ft.geometry && ft.geometry.coordinates) || [null, null];
         const sub = [pr.osm_value === 'city' ? 'City' : 'Town', pr.county || pr.state].filter(Boolean).join(' · ');
-        return { main: pr.name || '', sub, label: pr.name || '', lat, lon, source: 'osm', city: true };
+        return { main: pr.name || '', sub, label: pr.name || '', area: pr.county || '', lat, lon, source: 'osm', city: true };
     }).filter(r => r.main);
 }
 
@@ -1439,7 +1592,7 @@ async function photonSuggestions(text, signal) {
         const area = pr.county || pr.state || '';
         const sub = [PLACE_KINDS[pr.osm_value] || 'Place', area].filter(Boolean).join(' · ');
         const [lon, lat] = (ft.geometry && ft.geometry.coordinates) || [null, null];
-        return { main, sub, label: main, key: `${main}|${area}`, lat, lon, source: 'osm', city: pr.osm_value === 'city' || pr.osm_value === 'town' };
+        return { main, sub, label: main, key: `${main}|${area}`, area, lat, lon, source: 'osm', city: pr.osm_value === 'city' || pr.osm_value === 'town' };
     }).filter(r => r.main);
 }
 
@@ -1496,6 +1649,8 @@ function placeCols(id, prefix) {
     return { [prefix]: (v.text || '').trim(), [prefix + 'Lat']: v.lat ?? '', [prefix + 'Lon']: v.lon ?? '' };
 }
 function districtValue(id) { const v = answers[id] || {}; return v.district || ''; }
+function pickValue(id) { return shown(id) ? ((answers[id] || {}).value || '') : ''; }
+function multiValue(id) { const v = answers[id]; return shown(id) && Array.isArray(v) ? v.join('; ') : ''; }
 function amountValue(id) {
     if (!shown(id)) return '';
     const v = answers[id] || {};
@@ -1541,9 +1696,13 @@ function buildRecord(fix, interviewId, ts) {
         // Origin / destination
         ...placeCols('origin', 'origin'),
         originDistrict: districtValue('originDistrict'),
+        originDsd: pickValue('originDsd'),
+        originGnd: pickValue('originGnd'),
         originType: singleValue('originType'),
         ...placeCols('destination', 'destination'),
         destinationDistrict: districtValue('destinationDistrict'),
+        destinationDsd: pickValue('destinationDsd'),
+        destinationGnd: pickValue('destinationGnd'),
         destinationType: singleValue('destinationType'),
         // Trip details
         frequency: singleValue('frequency'),
@@ -1551,7 +1710,14 @@ function buildRecord(fix, interviewId, ts) {
         commodityDetail: detailValue('commodity'),
         load: singleValue('load'),
         tripPurpose: singleValue('tripPurpose'),
-        expressway: singleValue('expressway'),
+        usedExpressway: singleValue('usedExpressway'),
+        usedExpressways: multiValue('usedExpressways'),
+        usedEntry: pickValue('usedEntry'),
+        usedExit: pickValue('usedExit'),
+        futureExpressway: singleValue('futureExpressway'),
+        futureExpressways: multiValue('futureExpressways'),
+        futureEntry: pickValue('futureEntry'),
+        futureExit: pickValue('futureExit'),
         // Value of Time
         isOwner: singleValue('isOwner'),
         income: singleValue('income'),

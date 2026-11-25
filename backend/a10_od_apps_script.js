@@ -71,22 +71,33 @@ const COLUMNS = [
   ["Vehicle Category", "vehicleCategory", "text"],
   ["Vehicle Type", "vehicleType", "text"],
   ["Occupancy", "occupancy", "numtext"],
+  ["Origin District", "originDistrict", "text"],
+  ["Origin DSD", "originDsd", "text"],
+  ["Origin GND", "originGnd", "text"],
   ["Origin (Village / Town)", "origin", "text"],
   ["Origin Lat", "originLat", "num"],
   ["Origin Lon", "originLon", "num"],
-  ["Origin District", "originDistrict", "text"],
   ["Origin Type", "originType", "text"],
+  ["Destination District", "destinationDistrict", "text"],
+  ["Destination DSD", "destinationDsd", "text"],
+  ["Destination GND", "destinationGnd", "text"],
   ["Destination (Village / Town)", "destination", "text"],
   ["Destination Lat", "destinationLat", "num"],
   ["Destination Lon", "destinationLon", "num"],
-  ["Destination District", "destinationDistrict", "text"],
   ["Destination Type", "destinationType", "text"],
   ["Trip Frequency", "frequency", "text"],
   ["Commodity", "commodity", "text"],
   ["Commodity Detail", "commodityDetail", "text"],
   ["Load Condition", "load", "text"],
   ["Trip Purpose", "tripPurpose", "text"],
-  ["Future Use of Central Expressway", "expressway", "text"],
+  ["Used Expressway (This Trip)", "usedExpressway", "text"],
+  ["Expressway(s) Used", "usedExpressways", "text"],
+  ["Entry Interchange", "usedEntry", "text"],
+  ["Exit Interchange", "usedExit", "text"],
+  ["Future Expressway Use", "futureExpressway", "text"],
+  ["Future Expressway(s)", "futureExpressways", "text"],
+  ["Future Entry Interchange", "futureEntry", "text"],
+  ["Future Exit Interchange", "futureExit", "text"],
   ["Respondent Is Vehicle Owner", "isOwner", "text"],
   ["Monthly Household Income", "income", "text"],
   ["Commodity Value (Rs.)", "commodityValue", "numtext"],
@@ -105,11 +116,14 @@ const EVENT_ID_COL = HEADERS.indexOf("EventID") + 1; // 1-based
 
 // Categorical columns counted on the Summary tab (per survey date).
 const SUMMARY_FIELDS = [
-  "Survey Location", "Direction", "Vehicle Category", "Vehicle Type", "Occupancy", "Origin District", "Destination District",
-  "Origin Type", "Destination Type", "Trip Frequency", "Commodity", "Load Condition", "Trip Purpose",
-  "Future Use of Central Expressway", "Load Unit", "Respondent Is Vehicle Owner", "Monthly Household Income", "GPS Status"
+  "Survey Location", "Direction", "Vehicle Category", "Vehicle Type", "Occupancy", "Origin District", "Origin DSD",
+  "Destination District", "Destination DSD", "Origin Type", "Destination Type", "Trip Frequency", "Commodity", "Load Condition",
+  "Trip Purpose", "Used Expressway (This Trip)", "Expressway(s) Used", "Entry Interchange", "Exit Interchange",
+  "Future Expressway Use", "Future Expressway(s)", "Future Entry Interchange", "Future Exit Interchange",
+  "Load Unit", "Respondent Is Vehicle Owner", "Monthly Household Income", "GPS Status"
 ];
-const MULTI_FIELDS = []; // no multi-answer questions in this survey
+// Answers that can hold several choices ("A; B"): each counted on its own.
+const MULTI_FIELDS = ["Expressway(s) Used", "Future Expressway(s)"];
 const SEGMENT_COLUMN = "Date"; // Summary columns: one per survey date
 
 const MAX_BATCH_SIZE = 200;
@@ -135,9 +149,9 @@ function handleRequest(e) {
     for (const key in params) data[key] = params[key];
 
     const action = data.action;
-    // v4 = current app (vehicle number). v1 - v3 records are still accepted;
-    // retired fields are ignored and new ones left blank.
-    if (/^submit_a10od_v[1-4]$/.test(action || "")) return handleSubmitBatch(data);
+    // v5 = current app (DSD / GND, expressway used and future use). Older records
+    // are still accepted; retired fields are ignored and new ones left blank.
+    if (/^submit_a10od_v[1-5]$/.test(action || "")) return handleSubmitBatch(data);
     if (action === "upload_a10od_photo_v1") return handlePhoto(data);
     if (action === "admin_stats" || action === "admin_set_targets") return handleAdmin(data);
     if (!action) return responseJson({ status: "success", message: "A10 roadside O-D survey backend is running." });
@@ -491,8 +505,12 @@ const RECENT_PER_ENUMERATOR = 15; // latest interviews of each enumerator sent t
 const ADMIN_FIELDS = [
   ["direction", "Direction"], ["type", "Vehicle Type"], ["originDistrict", "Origin District"],
   ["destinationDistrict", "Destination District"], ["tripPurpose", "Trip Purpose"], ["frequency", "Trip Frequency"],
-  ["expressway", "Future Use of Central Expressway"], ["commodity", "Commodity"], ["load", "Load Condition"],
-  ["income", "Monthly Household Income"]
+  ["originDsd", "Origin DSD"], ["destinationDsd", "Destination DSD"],
+  ["usedExpressway", "Used Expressway (This Trip)"], ["usedExpressways", "Expressway(s) Used"],
+  ["usedEntry", "Entry Interchange"], ["usedExit", "Exit Interchange"],
+  ["futureExpressway", "Future Expressway Use"], ["futureExpressways", "Future Expressway(s)"],
+  ["futureEntry", "Future Entry Interchange"], ["futureExit", "Future Exit Interchange"],
+  ["commodity", "Commodity"], ["load", "Load Condition"], ["income", "Monthly Household Income"]
 ];
 
 function vehicleClass(category, type) {
@@ -675,7 +693,8 @@ function adminStats() {
       if (f[0] === "load") v = undoDate(v);
       if (!v) return;
       if (/^Other:/.test(v)) v = "Other";
-      add(st, date, f[0], v);
+      if (MULTI_FIELDS.indexOf(f[1]) >= 0) v.split("; ").forEach(function (x) { if (x) add(st, date, f[0], x); });
+      else add(st, date, f[0], v);
     });
     add(st, date, "recorder", name);
     const passenger = /Passenger/i.test(String(r[col["Vehicle Category"]]));

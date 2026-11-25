@@ -386,7 +386,16 @@ function odView(d) {
     html += bars('Destination district', tally(d, 'destinationDistrict'), { top: 12 });
     html += bars('Trip purpose', tally(d, 'tripPurpose'));
     html += bars('Trip frequency', tally(d, 'frequency'));
-    html += bars('Future use of the Central Expressway', tally(d, 'expressway'));
+    html += bars('Origin DS Division', tally(d, 'originDsd'), { top: 12 });
+    html += bars('Destination DS Division', tally(d, 'destinationDsd'), { top: 12 });
+    html += bars('Used an expressway on this trip', tally(d, 'usedExpressway'));
+    html += bars('Expressway(s) used', tally(d, 'usedExpressways'));
+    html += bars('Entry interchange (used)', tally(d, 'usedEntry'), { top: 12 });
+    html += bars('Exit interchange (used)', tally(d, 'usedExit'), { top: 12 });
+    html += bars('Would use an expressway in future', tally(d, 'futureExpressway'));
+    html += bars('Expressway(s), future use', tally(d, 'futureExpressways'));
+    html += bars('Entry interchange (future)', tally(d, 'futureEntry'), { top: 12 });
+    html += bars('Exit interchange (future)', tally(d, 'futureExit'), { top: 12 });
     html += bars('Commodity (freight)', tally(d, 'commodity'));
     html += bars('Load condition (freight)', tally(d, 'load'));
     html += bars('Monthly household income (owners)', tally(d, 'income'));

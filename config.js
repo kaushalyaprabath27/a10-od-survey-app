@@ -33,6 +33,28 @@ window.A10_CONFIG = {
     // Place suggestions near this point rank first until the phone has a GPS fix (A10 corridor).
     surveyAreaCenter: { lat: 7.35, lon: 80.57 },
 
+    // Expressways and their interchanges, offered for "which expressway" and the entry / exit
+    // interchange questions (any other name can still be typed). 'open' = in use now;
+    // 'building' = under construction or planned (offered for future use, marked as such).
+    // From the RDA / Wikipedia interchange lists (Nov 2026): check and edit here if needed.
+    expressways: [
+        { name: 'Southern Expressway (E01)', open: [
+            'Kottawa', 'Kahathuduwa', 'Gelanigama', 'Dodangoda', 'Welipenna', 'Kurundugahahetekma', 'Baddegama',
+            'Pinnaduwa', 'Imaduwa', 'Kokmaduwa', 'Godagama (Matara)', 'Palatuwa', 'Kapuduwa', 'Aparekka', 'Beliatta',
+            'Bedigama', 'Kasagala', 'Angunakolapelessa', 'Barawakumbuka', 'Sooriyawewa', 'Andarawewa', 'Mattala'] },
+        { name: 'Outer Circular Expressway (E02)', open: [
+            'Kottawa', 'Athurugiriya', 'Kothalawala', 'Kaduwela', 'Kadawatha', 'Kerawalapitiya'] },
+        { name: 'Colombo – Katunayake Expressway (E03)', open: [
+            'New Kelani Bridge', 'Peliyagoda', 'Kerawalapitiya', 'Ja-Ela', 'Katunayake'] },
+        { name: 'Central Expressway (E04)', open: [
+            'Mirigama', 'Ambepussa', 'Nakalagamuwa', 'Dambokka', 'Kurunegala'],
+          building: [
+            'Kadawatha', 'Gampaha', 'Veyangoda', 'Mirigama South', 'Pothuhera', 'Polgahawela', 'Rambukkana', 'Galagedara',
+            'Rideegama', 'Melsiripura', 'Galewela', 'Dambulla'] },
+        { name: 'Hambantota Expressway (E06)', open: ['Andarawewa', 'Hambantota'] },
+        { name: 'Ruwanpura Expressway (Kahathuduwa – Pelmadulla)', open: [], building: ['Kahathuduwa', 'Pelmadulla'] }
+    ],
+
     // Daily target for ONE enumerator, per line of the sampling plan. Shown to the enumerator
     // in the app (the count button at the top) and on the dashboard. Each line lists the app's
     // vehicle types counted in it.
