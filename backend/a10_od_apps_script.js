@@ -711,7 +711,7 @@ function adminStats() {
   return {
     status: "success",
     survey: "od",
-    version: 5, // 2: counts by direction and by enumerator; 3: each recorded vehicle type by direction; 4: each enumerator by vehicle type; 5: latest interviews
+    version: 6, // 2: counts by direction and by enumerator; 3: each recorded vehicle type by direction; 4: each enumerator by vehicle type; 5: latest interviews; 6: DSD / GND and expressway questions (app v5)
     directions: ["Towards Kandy", "Towards Kurunegala"],
     generated: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss"),
     total: rows.length,
