@@ -112,11 +112,81 @@ const GN_LIST = (() => {
     let i = 0;
     Object.keys(AREAS).forEach(d => Object.keys(AREAS[d]).forEach(s => AREAS[d][s].forEach(g => {
         const ok = pts[i] != null && pts[i + 1] != null;
-        out.push({ district: d, dsd: s, gnd: g, lc: g.toLowerCase(), lat: ok ? 5.8 + pts[i] / 1e4 : null, lon: ok ? 79.4 + pts[i + 1] / 1e4 : null });
+        out.push({ district: d, dsd: s, gnd: g, lc: g.toLowerCase(), nn: normName(g), key: nameKey(g), lat:ok ? 5.8 + pts[i] / 1e4 : null, lon: ok ? 79.4 + pts[i + 1] / 1e4 : null });
         i += 2;
     })));
     return out;
 })();
+
+// ----- Spelling-tolerant name matching -----
+// Sri Lankan place names are spelt many ways (Hataraliyadda / Hatharaliyadda,
+// Pilimatalawa / Pilimathalawa, Galagedera / Galagedara), so names are compared
+// after evening out th/t, dh/d, w/v, ee/i, oo/u and double letters, and a letter
+// or two wrong, missing or swapped still matches.
+function normName(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '')
+        .replace(/([tdkpbgcs])h/g, '$1').replace(/w/g, 'v').replace(/ee/g, 'i').replace(/oo|ou/g, 'u').replace(/(.)\1+/g, '$1');
+}
+// Edit distance (a letter added, missing, wrong or two swapped) from a to every start of b:
+// returns the row where row[j] = distance from a to b's first j letters (row[b.length] =
+// to the whole of b), or null when every one is over max. Rows are reused between calls.
+const ED_ROWS = [new Int16Array(64), new Int16Array(64), new Int16Array(64)];
+function editRow(a, b, max) {
+    if (b.length >= 63 || a.length >= 63) return null;
+    let [prev2, prev, cur] = ED_ROWS;
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+        cur[0] = i;
+        let rowMin = i;
+        for (let j = 1; j <= b.length; j++) {
+            let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+            if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] && prev2[j - 2] + 1 < v) v = prev2[j - 2] + 1;
+            cur[j] = v;
+            if (v < rowMin) rowMin = v;
+        }
+        if (rowMin > max) return null;
+        [prev2, prev, cur] = [prev, cur, prev2];
+    }
+    return prev;
+}
+// A name prepared for matching (done once per GN Division).
+function nameKey(name) {
+    const lc = String(name || '').toLowerCase();
+    const words = lc.split(/[^a-z0-9]+/).filter(Boolean);
+    return { lc, words, nn: normName(lc), wn: words.map(normName) };
+}
+// How well a name matches the typed text, best first (null = no match). A different
+// spelling of the same letters (th/t, w/v ...) counts as the same:
+//   0 same name   1 starts with it   2 a word starts with it   3 contains it
+//   4 + 2 x letters different: near spelling of the whole name (+1 of a word or the start).
+function nameScore(name, text, key) {
+    const t = String(text || '').trim().toLowerCase();
+    if (!t) return 0;
+    const k = key || nameKey(name);
+    const tn = normName(t);
+    const longEnough = tn.length >= 3;
+    if (k.lc === t || (longEnough && k.nn === tn)) return 0;
+    if (k.lc.startsWith(t) || (longEnough && k.nn.startsWith(tn))) return 1;
+    if (k.words.some(w => w.startsWith(t)) || (longEnough && k.wn.some(w => w.startsWith(tn)))) return 2;
+    if (k.lc.includes(t)) return 3;
+    if (!longEnough) return null;
+    // Near spellings: the whole name, or one of its words or their start (as far as typed).
+    // The first letter is taken as right (people rarely get it wrong), which keeps this quick.
+    if (k.nn[0] !== tn[0] && !k.wn.some(w => w[0] === tn[0])) return null;
+    const max = tn.length <= 4 ? 1 : tn.length <= 7 ? 2 : 3;
+    let whole = max + 1, part = max + 1;
+    (k.wn.length > 1 ? [k.nn].concat(k.wn) : [k.nn]).forEach(w => {
+        if (w[0] !== tn[0]) return;
+        const row = editRow(tn, w, max);
+        if (!row) return;
+        if (w === k.nn) whole = Math.min(whole, row[w.length]);
+        else part = Math.min(part, row[w.length]);
+        // As far as typed so far: the start of the word, about as long as the text.
+        for (let L = tn.length - 1; L <= tn.length + 1; L++) if (L > 0 && L < w.length) part = Math.min(part, row[L]);
+    });
+    if (whole <= max && whole <= part) return 4 + 2 * whole;
+    return part <= max ? 5 + 2 * part : null;
+}
 const geoD2 = (lat1, lon1, lat2, lon2) => { const x = (lon2 - lon1) * Math.cos(lat1 * Math.PI / 180), y = lat2 - lat1; return x * x + y * y; };
 function closestGn(list, lat, lon) {
     let best = null, bd = Infinity;
@@ -128,7 +198,9 @@ function closestGn(list, lat, lon) {
 // of that name nearest the survey site.
 function gnForPlace(text, lat, lon) {
     const name = String(text || '').trim().toLowerCase();
-    const same = name ? GN_LIST.filter(g => g.lc === name) : [];
+    let same = name ? GN_LIST.filter(g => g.lc === name) : [];
+    // Not found as typed: the same name spelt another way (Hataraliyadda = Hatharaliyadda).
+    if (!same.length && name) { const nn = normName(name); if (nn.length >= 3) same = GN_LIST.filter(g => g.nn === nn); }
     if (lat != null && lon != null) {
         const near = same.filter(g => g.lat != null && geoD2(lat, lon, g.lat, g.lon) < 0.05 * 0.05);
         return closestGn(near.length ? near : GN_LIST, lat, lon);
@@ -903,9 +975,9 @@ function typeahead(q, f, icon) {
 function recentKey(f) { return f.recentGroup || f.id; }
 function recentFor(f, text) {
     if (!f.recent) return [];
-    const t = text.toLowerCase();
     return (readJSON(RECENT_KEY, {})[recentKey(f)] || [])
-        .filter(r => !t || r.label.toLowerCase().includes(t))
+        .map(r => ({ r, s: nameScore(r.label, text) })).filter(x => x.s !== null)
+        .sort((x, y) => x.s - y.s).map(x => x.r)
         .slice(0, 4)
         .map(r => Object.assign({}, r, { main: r.label, sub: 'Used before on this phone', tag: 'recent' }));
 }
@@ -921,25 +993,32 @@ function rememberRecent(f, v) {
 }
 function presetFor(f, text) {
     if (!f.presets) return [];
-    const words = text.toLowerCase().split(/[\s\-–]+/).filter(Boolean);
     return (CONFIG.presetLocations || [])
-        .filter(name => words.every(w => name.toLowerCase().includes(w)))
+        .map(name => ({ name, s: nameScore(name, text) })).filter(x => x.s !== null)
+        .sort((x, y) => x.s - y.s).map(x => x.name)
         .map(name => ({ main: name, sub: CONFIG.presetSub || 'Nearby town', label: name, lat: null, lon: null, source: 'list', iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
 }
 
 // GN Division names anywhere in Sri Lanka (villages are often named like them), works
 // offline: names starting with the text first, then the ones nearest the survey site.
+let gnRowsLast = { t: null, rows: [] };   // the list is asked for twice per keystroke
 function gnRows(text) {
     const t = text.trim().toLowerCase();
     if (t.length < 2) return [];
+    if (gnRowsLast.t === t) return gnRowsLast.rows;
+    gnRowsLast = { t, rows: gnRowsFind(t) };
+    return gnRowsLast.rows;
+}
+function gnRowsFind(t) {
     const here = sessionLatLon();
     const far = g => here && g.lat != null ? geoD2(here.lat, here.lon, g.lat, g.lon) : 0;
-    const rank = g => g.lc === t ? 0 : g.lc.startsWith(t) ? 1 : 2;
-    return GN_LIST.filter(g => g.lc.includes(t))
-        .sort((x, y) => rank(x) - rank(y) || far(x) - far(y))
+    // Best match first (also near spellings), then the nearest to the survey site.
+    const found = [];
+    GN_LIST.forEach(g => { const s = nameScore(g.gnd, t, g.key); if (s !== null) found.push({ g, s }); });
+    return found.sort((x, y) => x.s - y.s || far(x.g) - far(y.g))
         .slice(0, 6)
-        .map(g => ({ main: g.gnd, sub: `GN Division · ${g.dsd} DSD, ${g.district} District`, label: g.gnd, key: `${g.gnd}|${g.dsd}|${g.district}`,
-            lat: null, lon: null, source: 'gnd', gn: g, iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
+        .map(({ g, s }) => ({ main: g.gnd, sub: `GN Division · ${g.dsd} DSD, ${g.district} District`, label: g.gnd, key: `${g.gnd}|${g.dsd}|${g.district}`,
+            lat: null, lon: null, source: 'gnd', gn: g, score: s, iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
 }
 // Fills the district, DSD and GND of a village question (of: 'origin' / 'destination')
 // from the GN Division found for the village. With none found, only answers that were
@@ -1035,10 +1114,12 @@ function buildPlaceField(q, f) {
                 placeSuggestions(qText, controller.signal)
             ]);
             const cityNames = new Set(cities.map(c => c.main.toLowerCase()));
-            const found = cities.concat(places.filter(p => !(p.city && cityNames.has(p.main.toLowerCase()))));
+            const sc = r => { const s = nameScore(r.label, qText); return s === null ? 99 : s; };
+            const found = cities.concat(places.filter(p => !(p.city && cityNames.has(p.main.toLowerCase()))))
+                .map(r => ({ r, s: sc(r) })).sort((x, y) => x.s - y.s).map(x => x.r);   // best match first
             // GN Divisions of exactly that name, then the map places, then other GN Divisions
             // (e.g. "Kurunegala" the town before "Kurunegala Town - East").
-            const exact = r => r.source !== 'gnd' || r.label.toLowerCase() === qText.toLowerCase();
+            const exact = r => r.source !== 'gnd' || r.score === 0;
             showRows(local.filter(exact).concat(found, local.filter(r => !exact(r))), found.length || local.length ? null : 'No map matches.');
         } catch (e) {
             if (e.name === 'AbortError') return;

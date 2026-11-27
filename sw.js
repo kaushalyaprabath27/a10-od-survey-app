@@ -1,6 +1,6 @@
 // Offline shell for the A10 Roadside O-D Survey PWA.
 // Bump CACHE_NAME whenever app files change so devices pick up the update.
-const CACHE_NAME = 'a10-od-survey-v8';
+const CACHE_NAME = 'a10-od-survey-v9';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
