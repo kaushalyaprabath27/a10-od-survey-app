@@ -97,11 +97,8 @@ const AREAS = window.SL_AREAS || {};
 const knownDistrict = v => !!(v && v.district && v.district !== NOT_KNOWN && AREAS[v.district]);
 const pickKnown = v => !!(v && v.value && v.value !== NOT_KNOWN);
 const pickOf = (a, id) => (a[id] && a[id].value) || '';
-const EXPRESSWAYS = Array.isArray(CONFIG.expressways) ? CONFIG.expressways : [];
-const EXPRESSWAY_OPTIONS = EXPRESSWAYS.filter(e => (e.open || []).length).map(e => [e.name, 'fa-road']);
-// The expressway asked about for future use (config.js: the one with a 'future' route).
-const FUTURE_WAY = EXPRESSWAYS.find(e => Array.isArray(e.future)) || { future: [], futureLabel: 'Central Expressway' };
-const FUTURE_NAME = FUTURE_WAY.futureLabel || FUTURE_WAY.name;
+// The expressway asked about, with its interchanges (config.js).
+const EXPRESSWAY = Object.assign({ name: 'Central Expressway (Mirigama – Kurunegala)', interchanges: [] }, CONFIG.expressway || {});
 // Expressway questions: every vehicle except motorcycles and three-wheelers.
 const NO_EXPRESSWAY_TYPES = ['Motorcycle', '3-wheeler'];
 const asksExpressway = a => !!a.vehicleCategory && !(isPax(a) && NO_EXPRESSWAY_TYPES.includes(a.paxType));
@@ -237,18 +234,14 @@ const FORM = [
         ]
     },
 
-    // ---------------- Expressway: this trip, then future use ----------------
+    // ---------------- Expressway: one question, then entry / exit ----------------
     // Not asked for motorcycles and three-wheelers (they may not use expressways).
-    { id: 'usedExpressway', section: 'Expressway', label: 'Did you use an expressway on this trip?', type: 'single', yesno: true, options: YES_NO, showIf: asksExpressway },
-    { id: 'usedExpressways', label: 'Which expressway(s)?', type: 'multi', grid: true, sub: true, options: EXPRESSWAY_OPTIONS, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
-    { id: 'usedEntry', label: 'Entry interchange (got on)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
-    { id: 'usedExit', label: 'Exit interchange (got off)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
     {
-        id: 'futureExpressway', label: `For this trip, would you use the ${FUTURE_NAME} when it is completed?`, type: 'single', yesno: true,
-        hint: FUTURE_WAY.futureRoute || '', options: YES_NO.concat([['Not sure', 'fa-circle-question']]), showIf: asksExpressway
+        id: 'usedExpressway', section: 'Expressway', label: `Have you used / will you use the ${EXPRESSWAY.name} on this trip?`,
+        type: 'single', yesno: true, options: YES_NO, showIf: asksExpressway
     },
-    { id: 'futureEntry', label: 'Entry interchange (would get on)', type: 'pick', area: 'interchange', future: true, sub: true, showIf: a => asksExpressway(a) && a.futureExpressway === 'Yes' },
-    { id: 'futureExit', label: 'Exit interchange (would get off)', type: 'pick', area: 'interchange', future: true, sub: true, showIf: a => asksExpressway(a) && a.futureExpressway === 'Yes' },
+    { id: 'usedEntry', label: 'Entry interchange', type: 'pick', area: 'interchange', sub: true, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
+    { id: 'usedExit', label: 'Exit interchange', type: 'pick', area: 'interchange', sub: true, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
 
     // ---------------- Value of Time (VOT) ----------------
     {
@@ -1168,23 +1161,10 @@ function pickRows(f, text) {
             .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y))
             .map(n => ({ main: n, value: n }));
     } else if (f.area === 'interchange') {
-        // future: the whole route of the expressway asked about, in order; otherwise the
-        // open interchanges of the expressways ticked (all of them when none is ticked).
-        const picked = answers[f.from];
-        const list = f.future ? [{ name: FUTURE_NAME, open: FUTURE_WAY.future || [] }]
-            : EXPRESSWAYS.filter(e => (e.open || []).length && (!Array.isArray(picked) || !picked.length || picked.includes(e.name)));
-        const byName = new Map();
-        list.forEach(e => {
-            const short = e.name.replace(/\s*\(.*\)\s*$/, '');
-            (e.open || []).forEach(n => {
-                const k = n.toLowerCase();
-                if (!byName.has(k)) byName.set(k, { main: n, value: n, ways: [] });
-                byName.get(k).ways.push(short);
-            });
-        });
-        rows = [...byName.values()].filter(r => !t || r.main.toLowerCase().includes(t))
-            .sort((x, y) => rank(x.main) - rank(y.main))
-            .map(r => Object.assign(r, { sub: r.ways.join(' · ') }));
+        // The interchanges of the expressway asked about, in route order.
+        rows = (EXPRESSWAY.interchanges || []).filter(n => !t || n.toLowerCase().includes(t))
+            .sort((x, y) => rank(x) - rank(y))
+            .map(n => ({ main: n, value: n }));
         const typed = text.trim();
         if (typed && !rows.some(r => r.main.toLowerCase() === t)) {
             rows.unshift({ main: typed, value: typed, sub: 'Use as typed', cls: 's-typed', iconHtml: '<i class="fa-solid fa-keyboard"></i> ' });
@@ -1786,11 +1766,11 @@ function buildRecord(fix, interviewId, ts) {
         load: singleValue('load'),
         tripPurpose: singleValue('tripPurpose'),
         usedExpressway: singleValue('usedExpressway'),
-        usedExpressways: multiValue('usedExpressways'),
+        usedExpressways: singleValue('usedExpressway') === 'Yes' ? EXPRESSWAY.name : '',
         usedEntry: pickValue('usedEntry'),
         usedExit: pickValue('usedExit'),
         futureExpressway: singleValue('futureExpressway'),
-        futureExpressways: singleValue('futureExpressway') === 'Yes' ? FUTURE_NAME : '',
+        futureExpressways: '',
         futureEntry: pickValue('futureEntry'),
         futureExit: pickValue('futureExit'),
         // Value of Time

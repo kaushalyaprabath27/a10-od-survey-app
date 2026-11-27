@@ -33,30 +33,13 @@ window.A10_CONFIG = {
     // Place suggestions near this point rank first until the phone has a GPS fix (A10 corridor).
     surveyAreaCenter: { lat: 7.35, lon: 80.57 },
 
-    // Expressways in use now, by the names people know them by, with their open interchanges:
-    // offered for "which expressway did you use" and its entry / exit interchanges (any
-    // other name can still be typed). Asked for every vehicle except motorcycles and three-wheelers.
-    // The one with 'future' is asked about next: "would you use it when it is completed?",
-    // with entry / exit from 'future' (the whole route, in order).
-    // From the RDA / Wikipedia interchange lists (Nov 2026): check and edit here if needed.
-    expressways: [
-        { name: 'Central Expressway (Mirigama – Kurunegala)', open: [
-            'Mirigama', 'Ambepussa', 'Nakalagamuwa', 'Dambokka', 'Kurunegala'],
-          futureLabel: 'Central Expressway',
-          futureRoute: 'Kadawatha – Mirigama – Kurunegala – Galagedara – Katugastota, and to Dambulla',
-          future: [
-            'Kadawatha', 'Gampaha', 'Veyangoda', 'Mirigama South', 'Mirigama', 'Ambepussa', 'Nakalagamuwa', 'Dambokka',
-            'Kurunegala', 'Pothuhera', 'Polgahawela', 'Rambukkana', 'Galagedara', 'Katugastota (Kandy)',
-            'Rideegama', 'Melsiripura', 'Galewela', 'Dambulla'] },
-        { name: 'Southern Expressway (Colombo – Matara – Hambantota)', open: [
-            'Kottawa', 'Kahathuduwa', 'Gelanigama', 'Dodangoda', 'Welipenna', 'Kurundugahahetekma', 'Baddegama',
-            'Pinnaduwa', 'Imaduwa', 'Kokmaduwa', 'Godagama (Matara)', 'Palatuwa', 'Kapuduwa', 'Aparekka', 'Beliatta',
-            'Bedigama', 'Kasagala', 'Angunakolapelessa', 'Barawakumbuka', 'Sooriyawewa', 'Andarawewa', 'Mattala', 'Hambantota'] },
-        { name: 'Outer Circular Expressway (Kottawa – Kadawatha – Kerawalapitiya)', open: [
-            'Kottawa', 'Athurugiriya', 'Kothalawala', 'Kaduwela', 'Kadawatha', 'Kerawalapitiya'] },
-        { name: 'Katunayake Expressway (Colombo – Airport)', open: [
-            'New Kelani Bridge', 'Peliyagoda', 'Kerawalapitiya', 'Ja-Ela', 'Katunayake'] }
-    ],
+    // The one expressway question: "Have you used / will you use the <name> on this trip?"
+    // If yes: entry and exit interchange, from this list (another name can be typed).
+    // Asked for every vehicle except motorcycles and three-wheelers.
+    expressway: {
+        name: 'Central Expressway (Mirigama – Kurunegala)',
+        interchanges: ['Mirigama', 'Ambepussa', 'Nakalagamuwa', 'Dambokka', 'Kurunegala']
+    },
 
     // Daily target for ONE enumerator, per line of the sampling plan. Shown to the enumerator
     // in the app (the count button at the top) and on the dashboard. Each line lists the app's
