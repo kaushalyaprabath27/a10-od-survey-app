@@ -98,8 +98,47 @@ const knownDistrict = v => !!(v && v.district && v.district !== NOT_KNOWN && ARE
 const pickKnown = v => !!(v && v.value && v.value !== NOT_KNOWN);
 const pickOf = (a, id) => (a[id] && a[id].value) || '';
 const EXPRESSWAYS = Array.isArray(CONFIG.expressways) ? CONFIG.expressways : [];
-const EXPRESSWAY_OPTIONS = EXPRESSWAYS.map(e => [e.name, 'fa-road']);
+const EXPRESSWAY_OPTIONS = EXPRESSWAYS.filter(e => (e.open || []).length).map(e => [e.name, 'fa-road']);
+// The expressway asked about for future use (config.js: the one with a 'future' route).
+const FUTURE_WAY = EXPRESSWAYS.find(e => Array.isArray(e.future)) || { future: [], futureLabel: 'Central Expressway' };
+const FUTURE_NAME = FUTURE_WAY.futureLabel || FUTURE_WAY.name;
+// Expressway questions: every vehicle except motorcycles and three-wheelers.
+const NO_EXPRESSWAY_TYPES = ['Motorcycle', '3-wheeler'];
+const asksExpressway = a => !!a.vehicleCategory && !(isPax(a) && NO_EXPRESSWAY_TYPES.includes(a.paxType));
 const YES_NO = [['Yes', 'fa-circle-check'], ['No', 'fa-circle-xmark']];
+
+// Every GN Division with its DSD, district and centre point (areas.js), so the
+// district, DSD and GND can be filled in from the village picked.
+const GN_LIST = (() => {
+    const pts = window.SL_GN_PTS || [];
+    const out = [];
+    let i = 0;
+    Object.keys(AREAS).forEach(d => Object.keys(AREAS[d]).forEach(s => AREAS[d][s].forEach(g => {
+        const ok = pts[i] != null && pts[i + 1] != null;
+        out.push({ district: d, dsd: s, gnd: g, lc: g.toLowerCase(), lat: ok ? 5.8 + pts[i] / 1e4 : null, lon: ok ? 79.4 + pts[i + 1] / 1e4 : null });
+        i += 2;
+    })));
+    return out;
+})();
+const geoD2 = (lat1, lon1, lat2, lon2) => { const x = (lon2 - lon1) * Math.cos(lat1 * Math.PI / 180), y = lat2 - lat1; return x * x + y * y; };
+function closestGn(list, lat, lon) {
+    let best = null, bd = Infinity;
+    list.forEach(g => { if (g.lat == null) return; const d = geoD2(lat, lon, g.lat, g.lon); if (d < bd) { bd = d; best = g; } });
+    return best;
+}
+// The GN Division a picked village lies in: a GN Division of the same name within ~5 km,
+// else the GN Division whose centre is nearest. Without coordinates: the GN Division
+// of that name nearest the survey site.
+function gnForPlace(text, lat, lon) {
+    const name = String(text || '').trim().toLowerCase();
+    const same = name ? GN_LIST.filter(g => g.lc === name) : [];
+    if (lat != null && lon != null) {
+        const near = same.filter(g => g.lat != null && geoD2(lat, lon, g.lat, g.lon) < 0.05 * 0.05);
+        return closestGn(near.length ? near : GN_LIST, lat, lon);
+    }
+    const here = sessionLatLon();
+    return same.length ? (here ? closestGn(same, here.lat, here.lon) : same[0]) : null;
+}
 
 const FORM = [
     // ---------------- Vehicle ----------------
@@ -138,23 +177,24 @@ const FORM = [
     },
 
     // ---------------- Origin ----------------
-    { id: 'originDistrict', section: 'Origin', label: 'Where did this trip start? District', type: 'district' },
+    // The village first; its district, DS and GN Division are then filled in (and can be changed).
+    {
+        id: 'origin', section: 'Origin', label: 'Where did this trip start? Village / town', type: 'place', of: 'origin', presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
+        hint: 'District, DS and GN Division below are filled in from it: change them if wrong', placeholder: 'Type a village, town or place'
+    },
+    { id: 'originDistrict', label: 'District of the origin', type: 'district', sub: true },
     { id: 'originDsd', label: 'DS Division of the origin', type: 'pick', area: 'dsd', of: 'origin', sub: true, showIf: a => knownDistrict(a.originDistrict) },
     { id: 'originGnd', label: 'GN Division of the origin', type: 'pick', area: 'gnd', of: 'origin', sub: true, showIf: a => knownDistrict(a.originDistrict) && pickKnown(a.originDsd) },
-    {
-        id: 'origin', label: 'Village / town of the origin', type: 'place', of: 'origin', sub: true, presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
-        hint: 'Suggestions from the district picked', placeholder: 'Type a village, town or place'
-    },
     { id: 'originType', label: 'Type of origin', type: 'single', grid: true, other: true, showIf: isPax, options: TRIP_ENDS },
 
     // ---------------- Destination ----------------
-    { id: 'destinationDistrict', section: 'Destination', label: 'Where will this trip end? District', type: 'district' },
+    {
+        id: 'destination', section: 'Destination', label: 'Where will this trip end? Village / town', type: 'place', of: 'destination', presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
+        hint: 'District, DS and GN Division below are filled in from it: change them if wrong', placeholder: 'Type a village, town or place'
+    },
+    { id: 'destinationDistrict', label: 'District of the destination', type: 'district', sub: true },
     { id: 'destinationDsd', label: 'DS Division of the destination', type: 'pick', area: 'dsd', of: 'destination', sub: true, showIf: a => knownDistrict(a.destinationDistrict) },
     { id: 'destinationGnd', label: 'GN Division of the destination', type: 'pick', area: 'gnd', of: 'destination', sub: true, showIf: a => knownDistrict(a.destinationDistrict) && pickKnown(a.destinationDsd) },
-    {
-        id: 'destination', label: 'Village / town of the destination', type: 'place', of: 'destination', sub: true, presets: true, recent: true, recentGroup: 'odPlaces', cities: true,
-        hint: 'Suggestions from the district picked', placeholder: 'Type a village, town or place'
-    },
     { id: 'destinationType', label: 'Type of destination', type: 'single', grid: true, other: true, showIf: isPax, options: TRIP_ENDS },
 
     // ---------------- Trip details ----------------
@@ -198,17 +238,17 @@ const FORM = [
     },
 
     // ---------------- Expressway: this trip, then future use ----------------
-    { id: 'usedExpressway', section: 'Expressway', label: 'Did you use an expressway on this trip?', type: 'single', yesno: true, options: YES_NO },
-    { id: 'usedExpressways', label: 'Which expressway(s)?', type: 'multi', grid: true, sub: true, options: EXPRESSWAY_OPTIONS, showIf: a => a.usedExpressway === 'Yes' },
-    { id: 'usedEntry', label: 'Entry interchange (got on)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => a.usedExpressway === 'Yes' },
-    { id: 'usedExit', label: 'Exit interchange (got off)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => a.usedExpressway === 'Yes' },
+    // Not asked for motorcycles and three-wheelers (they may not use expressways).
+    { id: 'usedExpressway', section: 'Expressway', label: 'Did you use an expressway on this trip?', type: 'single', yesno: true, options: YES_NO, showIf: asksExpressway },
+    { id: 'usedExpressways', label: 'Which expressway(s)?', type: 'multi', grid: true, sub: true, options: EXPRESSWAY_OPTIONS, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
+    { id: 'usedEntry', label: 'Entry interchange (got on)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
+    { id: 'usedExit', label: 'Exit interchange (got off)', type: 'pick', area: 'interchange', from: 'usedExpressways', sub: true, showIf: a => asksExpressway(a) && a.usedExpressway === 'Yes' },
     {
-        id: 'futureExpressway', label: 'In future, would you use an expressway for this trip?', type: 'single', yesno: true,
-        hint: 'e.g. when the Central Expressway reaches Galagedara', options: YES_NO.concat([['Not sure', 'fa-circle-question']])
+        id: 'futureExpressway', label: `For this trip, would you use the ${FUTURE_NAME} when it is completed?`, type: 'single', yesno: true,
+        hint: FUTURE_WAY.futureRoute || '', options: YES_NO.concat([['Not sure', 'fa-circle-question']]), showIf: asksExpressway
     },
-    { id: 'futureExpressways', label: 'Which expressway(s)?', type: 'multi', grid: true, sub: true, options: EXPRESSWAY_OPTIONS, showIf: a => a.futureExpressway === 'Yes' },
-    { id: 'futureEntry', label: 'Entry interchange (would get on)', type: 'pick', area: 'interchange', from: 'futureExpressways', sub: true, showIf: a => a.futureExpressway === 'Yes' },
-    { id: 'futureExit', label: 'Exit interchange (would get off)', type: 'pick', area: 'interchange', from: 'futureExpressways', sub: true, showIf: a => a.futureExpressway === 'Yes' },
+    { id: 'futureEntry', label: 'Entry interchange (would get on)', type: 'pick', area: 'interchange', future: true, sub: true, showIf: a => asksExpressway(a) && a.futureExpressway === 'Yes' },
+    { id: 'futureExit', label: 'Exit interchange (would get off)', type: 'pick', area: 'interchange', future: true, sub: true, showIf: a => asksExpressway(a) && a.futureExpressway === 'Yes' },
 
     // ---------------- Value of Time (VOT) ----------------
     {
@@ -894,29 +934,33 @@ function presetFor(f, text) {
         .map(name => ({ main: name, sub: CONFIG.presetSub || 'Nearby town', label: name, lat: null, lon: null, source: 'list', iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
 }
 
-// The district / DSD / GND picked above a village question (of: 'origin' / 'destination').
-function areaOf(f) {
-    if (!f.of) return {};
-    const d = answers[f.of + 'District'];
-    return {
-        district: knownDistrict(d) ? d.district : '',
-        dsd: pickKnown(answers[f.of + 'Dsd']) ? answers[f.of + 'Dsd'].value : '',
-        gnd: pickKnown(answers[f.of + 'Gnd']) ? answers[f.of + 'Gnd'].value : ''
-    };
+// GN Division names anywhere in Sri Lanka (villages are often named like them), works
+// offline: names starting with the text first, then the ones nearest the survey site.
+function gnRows(text) {
+    const t = text.trim().toLowerCase();
+    if (t.length < 2) return [];
+    const here = sessionLatLon();
+    const far = g => here && g.lat != null ? geoD2(here.lat, here.lon, g.lat, g.lon) : 0;
+    const rank = g => g.lc === t ? 0 : g.lc.startsWith(t) ? 1 : 2;
+    return GN_LIST.filter(g => g.lc.includes(t))
+        .sort((x, y) => rank(x) - rank(y) || far(x) - far(y))
+        .slice(0, 6)
+        .map(g => ({ main: g.gnd, sub: `GN Division · ${g.dsd} DSD, ${g.district} District`, label: g.gnd, key: `${g.gnd}|${g.dsd}|${g.district}`,
+            lat: null, lon: null, source: 'gnd', gn: g, iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
 }
-// GN Division names of the DSD picked (the GND picked first): villages are often named like them.
-function gndFor(f, text) {
-    const a = areaOf(f);
-    if (!a.district || !a.dsd) return [];
-    const t = text.toLowerCase();
-    const names = ((AREAS[a.district] || {})[a.dsd] || []).filter(n => !t || n.toLowerCase().includes(t));
-    names.sort((x, y) => (y === a.gnd) - (x === a.gnd) || (x.toLowerCase().startsWith(t) ? 0 : 1) - (y.toLowerCase().startsWith(t) ? 0 : 1) || x.localeCompare(y));
-    return names.slice(0, 8).map(n => ({ main: n, sub: `GN Division · ${a.dsd}`, label: n, lat: null, lon: null, source: 'gnd', iconHtml: '<i class="fa-solid fa-map-pin"></i> ' }));
-}
-// Map suggestions outside the district picked are left out.
-function inDistrict(f, r) {
-    const d = areaOf(f).district;
-    return !d || !r.area || r.area.replace(/\s+District$/i, '').toLowerCase() === d.toLowerCase();
+// Fills the district, DSD and GND of a village question (of: 'origin' / 'destination')
+// from the GN Division found for the village. With none found, only answers that were
+// filled in this way are cleared (ones the recorder picked stay).
+function fillAreaFrom(of, gn) {
+    const ids = [of + 'District', of + 'Dsd', of + 'Gnd'];
+    if (gn) {
+        answers[ids[0]] = { district: gn.district, text: gn.district, auto: true };
+        answers[ids[1]] = { value: gn.dsd, text: gn.dsd, parent: gn.district, auto: true };
+        answers[ids[2]] = { value: gn.gnd, text: gn.gnd, parent: gn.district + '|' + gn.dsd, auto: true };
+    } else {
+        ids.forEach(id => { if (answers[id] && answers[id].auto) answers[id] = null; });
+    }
+    ids.forEach(id => { if (renderers[id]) renderers[id](); });
 }
 
 function buildPlaceField(q, f) {
@@ -963,6 +1007,7 @@ function buildPlaceField(q, f) {
         if (controller) controller.abort();
         input.value = r.label;
         answers[f.id] = { text: r.label, lat: r.lat ?? null, lon: r.lon ?? null, source: r.source, placeId: r.placeId || '', confirmed: true };
+        if (f.of) fillAreaFrom(f.of, r.gn || gnForPlace(r.label, r.lat, r.lon));
         ta.hide();
         clear.classList.remove('hidden');
         changed();
@@ -972,6 +1017,7 @@ function buildPlaceField(q, f) {
             if (loc && answers[f.id] && answers[f.id].placeId === r.placeId) {
                 answers[f.id].lat = loc.lat;
                 answers[f.id].lon = loc.lon;
+                if (f.of) { fillAreaFrom(f.of, gnForPlace(r.label, loc.lat, loc.lon)); changed(); }
                 saveDraft();
                 setStatus();
             }
@@ -979,8 +1025,8 @@ function buildPlaceField(q, f) {
     };
     ta.onEnter = () => { if (input.value.trim()) { ta.items = typedItem(); ta.onChoose(0); } else ta.hide(); };
 
-    // With a district picked: its GN Divisions instead of the corridor town list.
-    const localRows = t => recentFor(f, t).concat(areaOf(f).district ? gndFor(f, t) : presetFor(f, t));
+    // Places used before, the corridor towns, then GN Division names (offline).
+    const localRows = t => recentFor(f, t).concat(presetFor(f, t), f.of ? gnRows(t) : []);
     const search = async text => {
         const qText = text.trim();
         const local = localRows(qText);
@@ -996,8 +1042,11 @@ function buildPlaceField(q, f) {
                 placeSuggestions(qText, controller.signal)
             ]);
             const cityNames = new Set(cities.map(c => c.main.toLowerCase()));
-            const found = cities.concat(places.filter(p => !(p.city && cityNames.has(p.main.toLowerCase())))).filter(r => inDistrict(f, r));
-            showRows(local.concat(found), found.length || local.length ? null : 'No map matches.');
+            const found = cities.concat(places.filter(p => !(p.city && cityNames.has(p.main.toLowerCase()))));
+            // GN Divisions of exactly that name, then the map places, then other GN Divisions
+            // (e.g. "Kurunegala" the town before "Kurunegala Town - East").
+            const exact = r => r.source !== 'gnd' || r.label.toLowerCase() === qText.toLowerCase();
+            showRows(local.filter(exact).concat(found, local.filter(r => !exact(r))), found.length || local.length ? null : 'No map matches.');
         } catch (e) {
             if (e.name === 'AbortError') return;
             showRows(local, 'Map suggestions unavailable right now.');
@@ -1018,6 +1067,16 @@ function buildPlaceField(q, f) {
     input.addEventListener('focus', () => {
         const v = answers[f.id];
         if (!(v && (v.lat != null || v.confirmed))) search(input.value);
+    });
+    // Typed and left without picking: fill the district etc. from a GN Division of that
+    // name, unless the recorder picked the district themselves.
+    input.addEventListener('change', () => {
+        const v = answers[f.id];
+        if (!f.of || !v || v.confirmed || !(v.text || '').trim()) return;
+        const d = answers[f.of + 'District'];
+        if (d && d.district && !d.auto) return;
+        fillAreaFrom(f.of, gnForPlace(v.text, null, null));
+        changed();
     });
     clear.addEventListener('click', () => {
         input.value = '';
@@ -1044,7 +1103,7 @@ function buildDistrictField(q, f) {
     const { input, clear, status } = ta;
     const setStatus = () => {
         const v = answers[f.id];
-        if (v && v.district) { status.textContent = v.district === NOT_KNOWN ? '✓ Not known' : `✓ ${v.district} District`; status.className = 'place-status ok'; }
+        if (v && v.district) { status.textContent = v.district === NOT_KNOWN ? '✓ Not known' : `✓ ${v.district} District${v.auto ? ' (from the village: change if wrong)' : ''}`; status.className = 'place-status ok'; }
         else if (v && v.text) { status.textContent = 'Pick a district from the list'; status.className = 'place-status warn'; }
         else { status.textContent = ''; status.className = 'place-status'; }
     };
@@ -1109,16 +1168,19 @@ function pickRows(f, text) {
             .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y))
             .map(n => ({ main: n, value: n }));
     } else if (f.area === 'interchange') {
+        // future: the whole route of the expressway asked about, in order; otherwise the
+        // open interchanges of the expressways ticked (all of them when none is ticked).
         const picked = answers[f.from];
-        const list = EXPRESSWAYS.filter(e => !Array.isArray(picked) || !picked.length || picked.includes(e.name));
+        const list = f.future ? [{ name: FUTURE_NAME, open: FUTURE_WAY.future || [] }]
+            : EXPRESSWAYS.filter(e => (e.open || []).length && (!Array.isArray(picked) || !picked.length || picked.includes(e.name)));
         const byName = new Map();
         list.forEach(e => {
-            const short = (/\((E\d+)\)/.exec(e.name) || [])[1] || e.name;
-            [[e.open || [], ''], [e.building || [], ' (under construction)']].forEach(([names, note]) => names.forEach(n => {
+            const short = e.name.replace(/\s*\(.*\)\s*$/, '');
+            (e.open || []).forEach(n => {
                 const k = n.toLowerCase();
                 if (!byName.has(k)) byName.set(k, { main: n, value: n, ways: [] });
-                byName.get(k).ways.push(short + note);
-            }));
+                byName.get(k).ways.push(short);
+            });
         });
         rows = [...byName.values()].filter(r => !t || r.main.toLowerCase().includes(t))
             .sort((x, y) => rank(x.main) - rank(y.main))
@@ -1137,7 +1199,7 @@ function buildPickField(q, f) {
     const { input, clear, status } = ta;
     const setStatus = () => {
         const v = answers[f.id];
-        if (v && v.value) { status.textContent = v.value === NOT_KNOWN ? '✓ Not known' : '✓ ' + v.value; status.className = 'place-status ok'; }
+        if (v && v.value) { status.textContent = v.value === NOT_KNOWN ? '✓ Not known' : '✓ ' + v.value + (v.auto ? ' (from the village)' : ''); status.className = 'place-status ok'; }
         else if (v && v.text) { status.textContent = f.area === 'interchange' ? 'Pick from the list or "Use as typed"' : 'Pick a name from the list'; status.className = 'place-status warn'; }
         else { status.textContent = ''; status.className = 'place-status'; }
     };
@@ -1728,7 +1790,7 @@ function buildRecord(fix, interviewId, ts) {
         usedEntry: pickValue('usedEntry'),
         usedExit: pickValue('usedExit'),
         futureExpressway: singleValue('futureExpressway'),
-        futureExpressways: multiValue('futureExpressways'),
+        futureExpressways: singleValue('futureExpressway') === 'Yes' ? FUTURE_NAME : '',
         futureEntry: pickValue('futureEntry'),
         futureExit: pickValue('futureExit'),
         // Value of Time

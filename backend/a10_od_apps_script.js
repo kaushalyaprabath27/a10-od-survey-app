@@ -496,7 +496,12 @@ const VEHICLE_CLASSES = [
 // 12 if not given). Fill in from the A10 sampling plan before running setup, or
 // enter them later in the Targets tab or with Edit targets on the dashboard. Example:
 //   "OD 1": { hours: 12, "Motor Cycles": 500, "Three Wheeler": 300, "Car/Jeep/SUV/Double Cab": 400, ... },
-const DEFAULT_TARGETS = {};
+const DEFAULT_TARGETS = {
+  // OD 3 (Galagedara Jn, 6 hours): Large truck 80 + Heavy vehicle 10 -> Heavy Truck 90; containers 3 + 3 -> 6.
+  // Already set in the Targets tab (27 Nov 2026); kept here in case the tab is made again.
+  "OD 3": { hours: 6, "Motor Cycles": 700, "Three Wheeler": 700, "Car/Jeep/SUV/Double Cab": 800, "Van": 120, "Mini Bus": 20,
+            "Small Truck": 150, "Medium Truck": 120, "Heavy Truck": 90, "Container": 6 }
+};
 // Keep in step with surveyLocations in the app's config.js.
 const STATIONS = ["OD 1", "OD 2", "OD 3", "OD 4", "OD 5", "OD 6", "OD 7"];
 const RECENT_PER_ENUMERATOR = 15; // latest interviews of each enumerator sent to the dashboard
